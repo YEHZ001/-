@@ -1,0 +1,412 @@
+import pygame
+import sys
+import random
+import math
+from pygame.locals import *
+
+# 初始化pygame
+pygame.init()
+pygame.font.init()
+
+# 屏幕设置
+WIDTH, HEIGHT = 1000, 700
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("市场供需平衡模拟 - 经济学实验")
+
+# 颜色定义
+BACKGROUND = (30, 40, 50)
+PANEL_BG = (45, 60, 80)
+TEXT_COLOR = (230, 240, 250)
+HIGHLIGHT = (80, 170, 240)
+SUPPLY_COLOR = (70, 200, 140)
+DEMAND_COLOR = (240, 120, 100)
+EQUILIBRIUM_COLOR = (255, 220, 60)
+BUTTON_COLOR = (70, 110, 170)
+BUTTON_HOVER = (90, 140, 210)
+AXIS_COLOR = (180, 190, 210)
+
+# 字体
+try:
+    # 尝试加载中文字体
+    title_font = pygame.font.SysFont('simhei', 40, bold=True)
+    header_font = pygame.font.SysFont('simhei', 30, bold=True)
+    main_font = pygame.font.SysFont('simhei', 26)
+    small_font = pygame.font.SysFont('simhei', 22)
+except:
+    # 回退到默认字体
+    title_font = pygame.font.SysFont(None, 40, bold=True)
+    header_font = pygame.font.SysFont(None, 30, bold=True)
+    main_font = pygame.font.SysFont(None, 26)
+    small_font = pygame.font.SysFont(None, 22)
+
+# 供需曲线参数
+a = random.randint(80, 120)  # 需求曲线截距
+b = random.uniform(0.8, 1.2)  # 需求曲线斜率
+c = random.randint(20, 40)   # 供给曲线截距
+d = random.uniform(0.6, 1.0)  # 供给曲线斜率
+
+# 计算均衡价格和数量
+equilibrium_price = (a - c) / (d + b)
+equilibrium_quantity = (a * d + b * c) / (d + b)
+
+# 当前价格
+current_price = random.uniform(equilibrium_price * 0.6, equilibrium_price * 1.4)
+
+# 游戏状态
+round_count = 1
+max_rounds = 10
+score = 0
+history = []
+game_state = "playing"  # "playing", "success", "end"
+
+class Button:
+    def __init__(self, x, y, width, height, text, action=None):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.text = text
+        self.action = action
+        self.hover = False
+        
+    def draw(self):
+        color = BUTTON_HOVER if self.hover else BUTTON_COLOR
+        pygame.draw.rect(screen, color, self.rect, border_radius=10)
+        pygame.draw.rect(screen, HIGHLIGHT, self.rect, 2, border_radius=10)
+        
+        text_surf = main_font.render(self.text, True, TEXT_COLOR)
+        text_rect = text_surf.get_rect(center=self.rect.center)
+        screen.blit(text_surf, text_rect)
+        
+    def check_hover(self, pos):
+        self.hover = self.rect.collidepoint(pos)
+        
+    def handle_event(self, event):
+        if event.type == MOUSEBUTTONDOWN and event.button == 1:
+            if self.hover and self.action:
+                self.action()
+                return True
+        return False
+
+# 按钮动作函数
+def increase_price():
+    global current_price
+    if current_price < 100:
+        current_price += 1
+
+def decrease_price():
+    global current_price
+    if current_price > 1:
+        current_price -= 1
+
+def submit_price():
+    global round_count, score, game_state, history, current_price
+    
+    # 计算当前供需
+    demand = max(0, a - b * current_price)
+    supply = max(0, c + d * current_price)
+    
+    # 计算与均衡点的距离
+    price_diff = abs(current_price - equilibrium_price)
+    quantity_diff = abs(min(demand, supply) - equilibrium_quantity)
+    
+    # 计算得分
+    round_score = max(0, 10 - (price_diff + quantity_diff))
+    score += round_score
+    
+    # 保存历史
+    history.append({
+        'round': round_count,
+        'price': round(current_price, 1),
+        'demand': round(demand, 1),
+        'supply': round(supply, 1),
+        'score': round(round_score, 1)
+    })
+    
+    # 检查游戏状态
+    if price_diff < 1 and quantity_diff < 5:
+        game_state = "success"
+    else:
+        round_count += 1
+        if round_count > max_rounds:
+            game_state = "end"
+        else:
+            # 随机波动价格
+            current_price = max(1, min(100, current_price + random.uniform(-5, 5)))
+
+def restart_game():
+    global round_count, score, history, current_price, game_state, a, b, c, d, equilibrium_price, equilibrium_quantity
+    
+    # 重置参数
+    a = random.randint(80, 120)
+    b = random.uniform(0.8, 1.2)
+    c = random.randint(20, 40)
+    d = random.uniform(0.6, 1.0)
+    
+    # 计算均衡价格和数量
+    equilibrium_price = (a - c) / (d + b)
+    equilibrium_quantity = (a * d + b * c) / (d + b)
+    
+    # 重置游戏状态
+    current_price = random.uniform(equilibrium_price * 0.6, equilibrium_price * 1.4)
+    round_count = 1
+    score = 0
+    history = []
+    game_state = "playing"
+
+# 创建按钮
+increase_btn = Button(780, 320, 50, 50, "+", increase_price)
+decrease_btn = Button(780, 380, 50, 50, "-", decrease_price)
+submit_btn = Button(720, 450, 160, 50, "提交价格", submit_price)
+restart_btn = Button(720, 520, 160, 50, "重新开始", restart_game)
+
+# 绘制供需曲线
+def draw_supply_demand_curve():
+    # 绘制坐标轴
+    pygame.draw.line(screen, AXIS_COLOR, (100, 550), (100, 150), 3)
+    pygame.draw.line(screen, AXIS_COLOR, (100, 550), (550, 550), 3)
+    
+    # 绘制标签
+    price_label = header_font.render("价格 (P)", True, TEXT_COLOR)
+    screen.blit(price_label, (40, 120))
+    
+    quantity_label = header_font.render("数量 (Q)", True, TEXT_COLOR)
+    screen.blit(quantity_label, (560, 560))
+    
+    # 绘制刻度
+    for i in range(0, 101, 20):
+        y = 550 - i * 4
+        pygame.draw.line(screen, AXIS_COLOR, (95, y), (105, y), 2)
+        text = small_font.render(str(i), True, TEXT_COLOR)
+        screen.blit(text, (65, y-10))
+    
+    for i in range(0, 101, 20):
+        x = 100 + i * 4.5
+        pygame.draw.line(screen, AXIS_COLOR, (x, 545), (x, 555), 2)
+        text = small_font.render(str(i), True, TEXT_COLOR)
+        screen.blit(text, (x-10, 560))
+    
+    # 绘制需求曲线 (Qd = a - bP)
+    demand_points = []
+    for p in range(0, 101):
+        q = max(0, a - b * p)
+        x = 100 + q * 4.5
+        y = 550 - p * 4
+        demand_points.append((x, y))
+    if len(demand_points) > 1:
+        pygame.draw.lines(screen, DEMAND_COLOR, False, demand_points, 4)
+    
+    # 绘制供给曲线 (Qs = c + dP)
+    supply_points = []
+    for p in range(0, 101):
+        q = max(0, c + d * p)
+        x = 100 + q * 4.5
+        y = 550 - p * 4
+        supply_points.append((x, y))
+    if len(supply_points) > 1:
+        pygame.draw.lines(screen, SUPPLY_COLOR, False, supply_points, 4)
+    
+    # 绘制均衡点
+    eq_x = 100 + equilibrium_quantity * 4.5
+    eq_y = 550 - equilibrium_price * 4
+    pygame.draw.circle(screen, EQUILIBRIUM_COLOR, (int(eq_x), int(eq_y)), 10)
+    eq_text = small_font.render(f"均衡点", True, EQUILIBRIUM_COLOR)
+    screen.blit(eq_text, (int(eq_x) - 30, int(eq_y) - 30))
+    
+    # 绘制当前价格点
+    demand = max(0, a - b * current_price)
+    supply = max(0, c + d * current_price)
+    cur_d_x = 100 + demand * 4.5
+    cur_d_y = 550 - current_price * 4
+    cur_s_x = 100 + supply * 4.5
+    cur_s_y = 550 - current_price * 4
+    
+    pygame.draw.circle(screen, DEMAND_COLOR, (int(cur_d_x), int(cur_d_y)), 8)
+    pygame.draw.circle(screen, SUPPLY_COLOR, (int(cur_s_x), int(cur_s_y)), 8)
+    
+    # 绘制当前价格线
+    pygame.draw.line(screen, HIGHLIGHT, (100, cur_d_y), (550, cur_d_y), 2)
+    price_text = main_font.render(f"当前价格: {current_price:.1f}", True, HIGHLIGHT)
+    screen.blit(price_text, (560, cur_d_y-15))
+    
+    # 绘制图例
+    pygame.draw.line(screen, DEMAND_COLOR, (450, 580), (500, 580), 4)
+    demand_legend = small_font.render("需求曲线 (D)", True, DEMAND_COLOR)
+    screen.blit(demand_legend, (510, 570))
+    
+    pygame.draw.line(screen, SUPPLY_COLOR, (450, 610), (500, 610), 4)
+    supply_legend = small_font.render("供给曲线 (S)", True, SUPPLY_COLOR)
+    screen.blit(supply_legend, (510, 602))
+    
+    pygame.draw.circle(screen, EQUILIBRIUM_COLOR, (475, 640), 8)
+    eq_legend = small_font.render("均衡点", True, EQUILIBRIUM_COLOR)
+    screen.blit(eq_legend, (490, 632))
+
+# 绘制游戏界面
+def draw_game_ui():
+    # 绘制标题
+    title = title_font.render("市场供需平衡模拟实验", True, TEXT_COLOR)
+    screen.blit(title, (WIDTH//2 - title.get_width()//2, 25))
+    pygame.draw.line(screen, HIGHLIGHT, (WIDTH//2 - 150, 70), (WIDTH//2 + 150, 70), 2)
+    
+    # 绘制理论说明面板
+    pygame.draw.rect(screen, PANEL_BG, (50, 90, 900, 120), border_radius=12)
+    pygame.draw.rect(screen, HIGHLIGHT, (50, 90, 900, 120), 2, border_radius=12)
+    
+    theory_title = header_font.render("经济学原理: 供需平衡", True, HIGHLIGHT)
+    screen.blit(theory_title, (WIDTH//2 - theory_title.get_width()//2, 100))
+    
+    # 简化和缩短文本
+    theory_text = [
+        "需求定律: 商品价格上升，需求量减少 (Qd = a - bP)",
+        "供给定律: 商品价格上升，供给量增加 (Qs = c + dP)",
+        f"市场均衡点: 价格={equilibrium_price:.1f}, 数量={equilibrium_quantity:.1f}",
+        "市场均衡: 供给量 = 需求量"
+    ]
+    
+    for i, text in enumerate(theory_text):
+        text_surf = main_font.render(text, True, TEXT_COLOR)
+        screen.blit(text_surf, (WIDTH//2 - text_surf.get_width()//2, 140 + i*30))
+    
+    # 绘制曲线图区域
+    pygame.draw.rect(screen, PANEL_BG, (50, 230, 620, 380), border_radius=12)
+    pygame.draw.rect(screen, HIGHLIGHT, (50, 230, 620, 380), 2, border_radius=12)
+    curve_title = header_font.render("供需曲线图", True, HIGHLIGHT)
+    screen.blit(curve_title, (330, 240))
+    
+    # 绘制供需曲线
+    draw_supply_demand_curve()
+    
+    # 绘制控制面板
+    pygame.draw.rect(screen, PANEL_BG, (700, 230, 280, 380), border_radius=12)
+    pygame.draw.rect(screen, HIGHLIGHT, (700, 230, 280, 380), 2, border_radius=12)
+    
+    control_title = header_font.render("价格控制", True, HIGHLIGHT)
+    screen.blit(control_title, (820, 240))
+    
+    # 回合信息
+    round_text = main_font.render(f"回合: {round_count}/{max_rounds}", True, TEXT_COLOR)
+    screen.blit(round_text, (720, 280))
+    
+    # 当前价格显示
+    price_text = main_font.render(f"当前价格: {current_price:.1f}", True, TEXT_COLOR)
+    screen.blit(price_text, (720, 320))
+    
+    # 当前供需情况
+    demand = max(0, a - b * current_price)
+    supply = max(0, c + d * current_price)
+    
+    # 创建供需信息面板
+    pygame.draw.rect(screen, (40, 50, 70), (720, 360, 240, 80), border_radius=8)
+    pygame.draw.rect(screen, HIGHLIGHT, (720, 360, 240, 80), 2, border_radius=8)
+    
+    demand_text = main_font.render(f"需求量: {demand:.1f}", True, DEMAND_COLOR)
+    supply_text = main_font.render(f"供给量: {supply:.1f}", True, SUPPLY_COLOR)
+    
+    screen.blit(demand_text, (750, 375))
+    screen.blit(supply_text, (750, 405))
+    
+    # 绘制按钮
+    increase_btn.draw()
+    decrease_btn.draw()
+    submit_btn.draw()
+    restart_btn.draw()
+    
+    # 得分显示
+    score_text = main_font.render(f"当前得分: {score:.1f}/100", True, TEXT_COLOR)
+    screen.blit(score_text, (720, 590))
+    
+    # 绘制历史记录
+    if history:
+        pygame.draw.rect(screen, PANEL_BG, (50, 620, 900, 60), border_radius=10)
+        pygame.draw.rect(screen, HIGHLIGHT, (50, 620, 900, 60), 2, border_radius=10)
+        
+        history_title = header_font.render("历史记录", True, HIGHLIGHT)
+        screen.blit(history_title, (WIDTH//2 - history_title.get_width()//2, 625))
+        
+        headers = ["回合", "价格", "需求量", "供给量", "得分"]
+        for i, header in enumerate(headers):
+            header_surf = small_font.render(header, True, HIGHLIGHT)
+            screen.blit(header_surf, (120 + i*180, 650))
+        
+        if history:
+            record = history[-1]
+            values = [
+                str(record['round']),
+                f"{record['price']:.1f}",
+                f"{record['demand']:.1f}",
+                f"{record['supply']:.1f}",
+                f"{record['score']:.1f}"
+            ]
+            for i, value in enumerate(values):
+                value_surf = small_font.render(value, True, TEXT_COLOR)
+                screen.blit(value_surf, (120 + i*180, 675))
+    
+    # 游戏状态提示
+    if game_state == "success":
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
+        
+        pygame.draw.rect(screen, (30, 100, 60), (WIDTH//2-250, HEIGHT//2-80, 500, 160), border_radius=20)
+        pygame.draw.rect(screen, (70, 200, 120), (WIDTH//2-250, HEIGHT//2-80, 500, 160), 3, border_radius=20)
+        
+        success_text = title_font.render("恭喜! 找到均衡价格!", True, (100, 255, 150))
+        screen.blit(success_text, (WIDTH//2 - success_text.get_width()//2, HEIGHT//2 - 50))
+        
+        continue_text = main_font.render("点击'重新开始'进行下一轮实验", True, TEXT_COLOR)
+        screen.blit(continue_text, (WIDTH//2 - continue_text.get_width()//2, HEIGHT//2 + 10))
+    
+    elif game_state == "end":
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
+        
+        pygame.draw.rect(screen, (100, 40, 40), (WIDTH//2-250, HEIGHT//2-80, 500, 160), border_radius=20)
+        pygame.draw.rect(screen, (220, 100, 80), (WIDTH//2-250, HEIGHT//2-80, 500, 160), 3, border_radius=20)
+        
+        end_text = title_font.render("游戏结束!", True, (255, 180, 100))
+        screen.blit(end_text, (WIDTH//2 - end_text.get_width()//2, HEIGHT//2 - 50))
+        
+        final_score = main_font.render(f"最终得分: {score:.1f}/100", True, TEXT_COLOR)
+        screen.blit(final_score, (WIDTH//2 - final_score.get_width()//2, HEIGHT//2 + 10))
+
+# 主游戏循环
+clock = pygame.time.Clock()
+running = True
+
+while running:
+    mouse_pos = pygame.mouse.get_pos()
+    
+    for event in pygame.event.get():
+        if event.type == QUIT:
+            running = False
+        
+        # 按钮事件处理
+        increase_btn.check_hover(mouse_pos)
+        decrease_btn.check_hover(mouse_pos)
+        submit_btn.check_hover(mouse_pos)
+        restart_btn.check_hover(mouse_pos)
+        
+        increase_btn.handle_event(event)
+        decrease_btn.handle_event(event)
+        submit_btn.handle_event(event)
+        restart_btn.handle_event(event)
+        
+        # 键盘事件
+        if event.type == KEYDOWN and game_state == "playing":
+            if event.key == K_UP:
+                increase_price()
+            elif event.key == K_DOWN:
+                decrease_price()
+            elif event.key == K_RETURN:
+                submit_price()
+            elif event.key == K_r:
+                restart_game()
+    
+    # 绘制界面
+    screen.fill(BACKGROUND)
+    draw_game_ui()
+    
+    pygame.display.flip()
+    clock.tick(60)
+
+pygame.quit()
+sys.exit()
